@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+  <name>Trace with Nib</name>
+  <id>text.glyph.nibtrace</id>
+  <param name="nib_angle" type="float" min="0" max="360" gui-text="Nib angle (deg):">45</param>
+  <effect>
+    <effects-menu>
+      <submenu name="Glyph"/>
+    </effects-menu>
+  </effect>
+  <script>
+    <command location="inx" interpreter="python">nib_trace.py</command>
+  </script>
+</inkscape-extension>
