@@ -67,7 +67,7 @@ class PathSplitter():
         elif isinstance(seg.command, (Line, Move)):
             segments.append(seg.command)
         elif isinstance(seg.command, ZoneClose):
-            segments.append(Line(seg.first_point.x, seg.first_point.y))
+            # segments.append(Line(seg.first_point.x, seg.first_point.y))
             segments.append(seg.command)
         elif isinstance(seg.command, (Vert, Horz)):
             segments.append(seg.command.to_line(seg.end_point))
@@ -77,9 +77,8 @@ class PathSplitter():
     def process_path(self):
         path_temp = self.path
         angles = [self.angle, self.angle + 90, 0, 90]
-
         for angle in angles:
-            #split path segments at tangents to self.angle
+            #split path segments at tangents to angles
             seg_list = []
             for node in path_temp.to_absolute().proxy_iterator():
                 seg_list.append(self.process_command(node, angle))
@@ -114,9 +113,9 @@ class NibOutline(inkex.EffectExtension):
         pen = args[1]
 
         layer = self.svg.get_current_layer()
-        glyph = inkex.Group()
+        glyph = inkex.Layer()
         glyph.set('inkscape:label', 'glyph')
-        glyph.set('inkscape:groupmode', 'layer')
+        # glyph.set('inkscape:groupmode', 'layer')
         layer.append(glyph)
         if trace.transform:
             glyph.transform = trace.transform
@@ -141,7 +140,7 @@ class NibOutline(inkex.EffectExtension):
                 # Join end_points of current and previous joints with edge
                 for nib_cmd in joint.path.to_absolute().proxy_iterator():
                     nib_cmd_prev = nib_cmd.previous_end_point
-                    if isinstance(nib_cmd.command, Move): continue
+                    if isinstance(nib_cmd.command, (Move, ZoneClose)): continue
                     else:
                         self.make_face(edge_cmd, nib_cmd, nib_cmd_prev, glyph, nib.path_element.style)
 
