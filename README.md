@@ -1,4 +1,5 @@
-# trace_with_nib
+# Trace with Nib
+
 Inkscape extention to draw one path (trace) with another path (nib). User setting for nib angle separate from nib shape.
 
 Usage:
