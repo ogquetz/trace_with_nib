@@ -44,7 +44,7 @@ class PathSplitter():
         segments = []
         d = Vector2d.from_polar(1.0, math.radians(angle))
 
-        # Code taken from motion.py
+        # Code taken from motion.py extension
         if isinstance(seg.command, (Curve, Smooth, TepidQuadratic, Quadratic, Arc)):
             prev = seg.previous_end_point
             for curve in seg.to_curves():
@@ -67,8 +67,15 @@ class PathSplitter():
         elif isinstance(seg.command, (Line, Move)):
             segments.append(seg.command)
         elif isinstance(seg.command, ZoneClose):
-            # segments.append(Line(seg.first_point.x, seg.first_point.y))
-            segments.append(seg.command)
+            """
+            WARNING: Paths with multiple z commands will be incorrect.
+            For some reason, the ZoneClose Path Command always returns the start
+            point of the entire path (not just the command segment) for both
+            ZoneClose.end_point and first_point. So for paths with multiple
+            segments, all ZoneClose commands will not connect to the start of the
+            path, instead of connecting to their respective segment starting point.
+            """
+            segments.append(Line(seg.end_point.x, seg.end_point.y))
         elif isinstance(seg.command, (Vert, Horz)):
             segments.append(seg.command.to_line(seg.end_point))
 
@@ -78,7 +85,7 @@ class PathSplitter():
         path_temp = self.path
         angles = [self.angle, self.angle + 90, 0, 90]
         for angle in angles:
-            #split path segments at tangents to angles
+            # split path segments at tangents to angles
             seg_list = []
             for node in path_temp.to_absolute().proxy_iterator():
                 seg_list.append(self.process_command(node, angle))
@@ -96,63 +103,102 @@ class PathSplitter():
         path_d = self.process_path()
         elem.path = Path(path_d)
         elem.set('inkscape:label', 'split_path')
+        elem.style = self.path.style
 
         return elem
+
 
 class NibOutline(inkex.EffectExtension):
     def add_arguments(self, pars):
         pars.add_argument("--nib_angle", type=float, help="Angle to rotate the nib")
 
     def effect(self):
-        args = self.svg.selection.paint_order().filter(inkex.PathElement)
+        # TODO: update paint_order() to rendering_order() when API v1.2 is supported in macOS build. Currently using Inkscape 1.1.2 (b8e25be8, 2022-02-05)
+        args = self.svg.selection.paint_order()
         if len(args) != 2:
             inkex.errormsg(_("This extension requires two selected paths."))
             raise inkex.utils.AbortExtension
 
-        trace = args[0]
-        pen = args[1]
-
         layer = self.svg.get_current_layer()
-        glyph = inkex.Layer()
+        glyph = layer.add(inkex.Layer())
         glyph.set('inkscape:label', 'glyph')
-        # glyph.set('inkscape:groupmode', 'layer')
-        layer.append(glyph)
+
+        """
+        Prepare trace paths
+        Uses bottom object in selection as trace path. Only paths or groups of paths are supported.
+        """
+        trace = args[0]
         if trace.transform:
             glyph.transform = trace.transform
             trace.transform = None
 
-        # Prepare trace path by splitting segments at tangents to nib_angle
-        edge = PathSplitter(trace, self.options.nib_angle)
-        edge_elem = glyph.add(edge.get_path_element())
-        edge_elem.set('inkscape:label', 'edge')
-        edge_elem.style = trace.style
+        trace = self.prepare_path(args[0], glyph, 'trace')
 
-        # Prepare pen path by splitting segments at tangents to nib_angle
-        nib = PathSplitter(pen, self.options.nib_angle)
-        nib_elem = glyph.add(nib.get_path_element())
-        nib_elem.set('inkscape:label', 'nib')
+        """
+        Prepare nib paths
+        Uses top object in selection as nib path. Only paths or groups of paths are supported.
+        """
+        nib = self.prepare_path(args[1], glyph, 'nib')
 
+        """
         # Place duplicates nibs at trace path end_points
-        for edge_cmd in edge.split_path.to_absolute().proxy_iterator():
-            joint = self.place_joint(nib, edge_cmd.end_point, glyph)
-            if isinstance(edge_cmd.command, Move): continue
+        """
+        for trace_cmd in trace.path.to_absolute().proxy_iterator():
+            joint = self.place_joint(nib, trace_cmd.end_point, glyph)
+            if isinstance(trace_cmd.command, Move): continue
             else:
                 # Join end_points of current and previous joints with edge
                 for nib_cmd in joint.path.to_absolute().proxy_iterator():
-                    nib_cmd_prev = nib_cmd.previous_end_point
-                    if isinstance(nib_cmd.command, (Move, ZoneClose)): continue
+                    if isinstance(nib_cmd.command, (Move)): continue
                     else:
-                        self.make_face(edge_cmd, nib_cmd, nib_cmd_prev, glyph, nib.path_element.style)
+                        self.make_face(trace_cmd,
+                                       nib_cmd,
+                                       glyph,
+                                       nib.style)
 
-        # Cleanup: delete nib and edge paths
-        # edge_elem.delete()
-        # nib_elem.delete()
+        # Cleanup:
+        # Delete nib and edge paths
+        trace.delete()
+        nib.delete()
 
+        # TODO: auto-select generated faces and joints and Union them
+
+
+    def prepare_path(self, arg, layer, label='split'):
+        """
+        Get the descendants of top object.
+        That list includes the top object as the first element, so pop it and test if it is a group.
+        If it is a group, split the remaining paths. If not, assume it is a path and split it.
+
+        # TODO: support for other shapes
+        # TODO: break paths with multiple ZoneClose commands before splitting.
+                See PathSplitter for warning about multiple ZoneClose
+        """
+        items = arg.descendants()
+        item = items.pop(0)
+
+        if isinstance(item, inkex.Group):
+            paths = [path for path in items]
+        else:
+            paths = [item]
+
+        result = layer.add(PathElement())
+        result.set('inkscape:label', label)
+
+        result_path = Path()
+        for path in paths:
+            processed_path = PathSplitter(path, self.options.nib_angle)
+            result_path.append(processed_path.split_path)
+            result.style = path.style
+
+        result.path = result_path
+
+        return result
 
     def place_joint(self, nib, point, glyph):
         """Place a joint path at an edge node"""
-        joint = nib.path_element.duplicate()
-        joint.path = nib.split_path
+        joint = nib.duplicate()
+        # joint.path = nib.split_path
         joint.set('inkscape:label', 'joint')
         glyph.append(joint)
 
@@ -164,11 +210,10 @@ class NibOutline(inkex.EffectExtension):
 
         return joint
 
-    def make_face(self, edge, nib, nib_prev, layer, style):
+    def make_face(self, edge, nib, layer, style):
         """
         edge: command proxy for trace path segment
         nib: command proxy for nib path segment
-        nib_prev: previous end point
         layer: layer to attach the face
         style: style to apply to the face (default: copied from nib.style)
 
@@ -185,13 +230,13 @@ class NibOutline(inkex.EffectExtension):
         edge_orig = edge.command.to_relative(edge.previous_end_point)
 
         if isinstance(nib.command, ZoneClose):
-            nib_orig = inkex.paths.Line(nib.end_point.x, nib.end_point.y).to_relative(nib_prev)
-            nib_rev = inkex.paths.Line(nib_prev.x, nib_prev.y).to_relative(nib.first_point)
+            nib_orig = Line(nib.first_point.x, nib.first_point.y).to_relative(nib_prev)
+            nib_rev = Line(nib_prev.x, nib_prev.y).to_relative(nib.first_point)
         else:
-            nib_orig = nib.command.to_relative(nib_prev)
+            nib_orig = nib.command.to_relative(nib.previous_end_point)
             nib_rev = nib.reverse().to_relative(nib.end_point)
 
-        segments = [Move(nib_prev.x, nib_prev.y)]
+        segments = [Move(nib.previous_end_point.x, nib.previous_end_point.y)]
         segments.append(nib_orig)
         segments.append(edge_rev)
         segments.append(nib_rev)
@@ -199,11 +244,12 @@ class NibOutline(inkex.EffectExtension):
         segments.append(ZoneClose())
 
         face = inkex.PathElement()
-        face.set('inkscape:label', 'face')
+        face.set('inkscape:label', 'face-' + str(nib.command))
         face.path = Path(segments)
         face.style = style
 
         layer.append(face)
+
 
 if __name__ == '__main__':
     NibOutline().run()
