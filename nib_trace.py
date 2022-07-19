@@ -122,6 +122,7 @@ class NibOutline(inkex.EffectExtension):
         layer = self.svg.get_current_layer()
         glyph = layer.add(inkex.Layer())
         glyph.set('inkscape:label', 'glyph')
+        glyph.set('class', 'glyph')
 
         """
         Prepare trace paths
