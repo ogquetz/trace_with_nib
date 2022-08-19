@@ -28,6 +28,7 @@ from inkex.paths import Move, Line, Curve, ZoneClose, Arc, Path, Vert, Horz, Tep
 from inkex.transforms import Vector2d
 from inkex.bezier import beziertatslope, beziersplitatt
 
+
 class PathSplitter():
     """Convenience class to split path segments"""
 
@@ -40,7 +41,7 @@ class PathSplitter():
 
         self.split_path = Path(self.process_path())
 
-    def process_command (self, seg, angle):
+    def process_command(self, seg, angle):
         segments = []
         d = Vector2d.from_polar(1.0, math.radians(angle))
 
@@ -96,7 +97,6 @@ class PathSplitter():
 
         return result
 
-
     def get_path_element(self):
         elem = inkex.PathElement()
 
@@ -110,7 +110,8 @@ class PathSplitter():
 
 class NibOutline(inkex.EffectExtension):
     def add_arguments(self, pars):
-        pars.add_argument("--nib_angle", type=float, help="Angle to rotate the nib")
+        pars.add_argument("--nib_angle", type=float,
+                          help="Angle to rotate the nib")
 
     def effect(self):
         # TODO: update paint_order() to rendering_order() when API v1.2 is supported in macOS build. Currently using Inkscape 1.1.2 (b8e25be8, 2022-02-05)
@@ -146,11 +147,13 @@ class NibOutline(inkex.EffectExtension):
         """
         for trace_cmd in trace.path.to_absolute().proxy_iterator():
             joint = self.place_joint(nib, trace_cmd.end_point, glyph)
-            if isinstance(trace_cmd.command, Move): continue
+            if isinstance(trace_cmd.command, Move):
+                continue
             else:
                 # Join end_points of current and previous joints with edge
                 for nib_cmd in joint.path.to_absolute().proxy_iterator():
-                    if isinstance(nib_cmd.command, (Move)): continue
+                    if isinstance(nib_cmd.command, (Move)):
+                        continue
                     else:
                         self.make_face(trace_cmd,
                                        nib_cmd,
@@ -163,7 +166,6 @@ class NibOutline(inkex.EffectExtension):
         nib.delete()
 
         # TODO: auto-select generated faces and joints and Union them
-
 
     def prepare_path(self, arg, layer, label='split'):
         """
@@ -231,7 +233,8 @@ class NibOutline(inkex.EffectExtension):
         edge_orig = edge.command.to_relative(edge.previous_end_point)
 
         if isinstance(nib.command, ZoneClose):
-            nib_orig = Line(nib.first_point.x, nib.first_point.y).to_relative(nib_prev)
+            nib_orig = Line(nib.first_point.x,
+                            nib.first_point.y).to_relative(nib_prev)
             nib_rev = Line(nib_prev.x, nib_prev.y).to_relative(nib.first_point)
         else:
             nib_orig = nib.command.to_relative(nib.previous_end_point)
